@@ -14,10 +14,10 @@
 // I/O ports config (change pin numbers if DRO, Tach sensor or Tach LED feedback is connected to different ports)
 #define SCALE_CLK_PIN 2
 
-#define SCALE_X_PIN 3
+#define SCALE_X_PIN 21   // pin 3 was causing instability - some internal pull-up as this is a uart pin as well. Moveing it to pin 21 as its safe and next to pin 3
 #define SCALE_Y_PIN 4
 #define SCALE_Z_PIN 5
-#define SCALE_W_PIN 6
+#define SCALE_W_PIN 13
 
 
 // General Settings
