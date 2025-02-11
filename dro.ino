@@ -83,7 +83,7 @@ volatile long axisAMAValueY;
 //The setup function is called once at startup of the sketch
 void setup()
 {
-  cli();
+ // cli();
   tickTimerFlag = false;
   updateFrequencyCounter = 0;
 
@@ -111,7 +111,7 @@ void setup()
   wReportedValue = 0L;
 
   //initialize timers
-  setupClkTimer();
+  setupClkTimer(); 
   sei();
 }
 
@@ -129,7 +129,8 @@ void loop()
     SerialBT.print((long)xReportedValue);
     SerialBT.print(F(";"));
     
-    scaleValueRounded(yReportedValue, axisLastReadY, axisLastReadPositionY, axisAMAValueY);    SerialBT.print(F("Y"));
+    scaleValueRounded(yReportedValue, axisLastReadY, axisLastReadPositionY, axisAMAValueY); 
+    SerialBT.print(F("Y"));
     SerialBT.print((long)yReportedValue);
     SerialBT.print(F(";"));
     
