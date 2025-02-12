@@ -4,12 +4,13 @@
 */
 
 #include "BluetoothSerial.h"
+#include <driver/pcnt.h>
 
 // DRO config (if axis is not connected change in the corresponding constant value from "1" to "0")
 #define SCALE_X_ENABLED 1
 #define SCALE_Y_ENABLED 1
 #define SCALE_Z_ENABLED 1
-#define SCALE_W_ENABLED 0
+
 
 // I/O ports config (change pin numbers if DRO, Tach sensor or Tach LED feedback is connected to different ports)
 #define SCALE_CLK_PIN 2
@@ -17,12 +18,17 @@
 #define SCALE_X_PIN 21   // pin 3 was causing instability - some internal pull-up as this is a uart pin as well. Moveing it to pin 21 as its safe and next to pin 3
 #define SCALE_Y_PIN 4
 #define SCALE_Z_PIN 5
-#define SCALE_W_PIN 13
 
 
 // General Settings
 #define UART_BAUD_RATE 9600       //  Set this so it matches the BT module's BAUD rate 
 #define UPDATE_FREQUENCY 24       //  Frequency in Hz (number of timer per second the scales are read and the data is sent to the application)
+
+
+// Tachometer settings
+#define TACH_PIN 14         // GPIO where tach sensor is connected
+#define PCNT_UNIT PCNT_UNIT_0
+#define PULSES_PER_REV 1    // Adjust based on number of pulses per revolution
 
 //---END OF CONFIGURATION PARAMETERS ---
 
@@ -47,6 +53,9 @@ long const longMax = __LONG_MAX__;
 long const longMin = (- __LONG_MAX__ - (long) 1);
 long const slowSc = ((long) 2000) / (((long) FILTER_SLOW_EMA) + ((long) 1));
 long const fastSc = ((long) 20) / (((long) FILTER_FAST_EMA) + ((long) 1));
+volatile int16_t pulseCount = 0;
+volatile unsigned long lastUpdateTime = 0;
+
 
 hw_timer_t * timer2 = NULL;
 hw_timer_t * timer1 = NULL;
@@ -103,18 +112,14 @@ void setup()
   pinMode(SCALE_Y_PIN, INPUT);
   yValue = 0L;
   yReportedValue = 0L;
-  pinMode(SCALE_Z_PIN, INPUT);
+  pinMode(SCALE_Z_PIN, INPUT_PULLDOWN);
   zValue = 0L;
   zReportedValue = 0L;
-  pinMode(SCALE_Z_PIN, INPUT);
-  wValue = 0L;
-  wReportedValue = 0L;
 
   //initialize timers
   setupClkTimer(); 
   sei();
 }
-
 
 // The loop function is called in an endless loop
 void loop()
@@ -137,14 +142,9 @@ void loop()
     SerialBT.print(F("Z"));
     SerialBT.print((long)zReportedValue);
     SerialBT.print(F(";"));
-  /*
-    SerialBT.print(F("W"));
-    SerialBT.print((long)wReportedValue);
-    SerialBT.print(F(";")); 
-    */
+
   }
 }
-
 
 /* Interrupt Service Routines */
 
@@ -184,10 +184,6 @@ void IRAM_ATTR onTimer1() {
         zValue |= ((long)0x00100000 );
       zValue >>= 1;
 
-      if (digitalRead(SCALE_W_PIN))
-        wValue |= ((long)0x00100000 );
-      wValue >>= 1;
-      
     } else if (updateFrequencyCounter == SCALE_CLK_PULSES - 1) {
 
       //If 21-st bit is 'HIGH' inverse the sign of the axis readout
@@ -205,11 +201,6 @@ void IRAM_ATTR onTimer1() {
         zValue |= ((long)0xfff00000);
       zReportedValue = zValue;
       zValue = 0L;
-      
-      if (digitalRead(SCALE_W_PIN))
-        wValue |= ((long)0xfff00000);
-      wReportedValue = wValue;
-      wValue = 0L;
       
       // Tell the main loop, that it's time to sent data
       tickTimerFlag = true;

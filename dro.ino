@@ -9,7 +9,7 @@
 #define SCALE_X_ENABLED 1
 #define SCALE_Y_ENABLED 1
 #define SCALE_Z_ENABLED 1
-#define SCALE_W_ENABLED 0
+
 
 // I/O ports config (change pin numbers if DRO, Tach sensor or Tach LED feedback is connected to different ports)
 #define SCALE_CLK_PIN 2
@@ -17,12 +17,17 @@
 #define SCALE_X_PIN 21   // pin 3 was causing instability - some internal pull-up as this is a uart pin as well. Moveing it to pin 21 as its safe and next to pin 3
 #define SCALE_Y_PIN 4
 #define SCALE_Z_PIN 5
-#define SCALE_W_PIN 13
 
 
 // General Settings
 #define UART_BAUD_RATE 9600       //  Set this so it matches the BT module's BAUD rate 
 #define UPDATE_FREQUENCY 24       //  Frequency in Hz (number of timer per second the scales are read and the data is sent to the application)
+
+
+// Tachometer settings
+#define TACH_PIN 14         // GPIO where tach sensor is connected
+#define PCNT_UNIT PCNT_UNIT_0
+#define PULSES_PER_REV 1    // Adjust based on number of pulses per revolution
 
 //---END OF CONFIGURATION PARAMETERS ---
 
@@ -47,6 +52,9 @@ long const longMax = __LONG_MAX__;
 long const longMin = (- __LONG_MAX__ - (long) 1);
 long const slowSc = ((long) 2000) / (((long) FILTER_SLOW_EMA) + ((long) 1));
 long const fastSc = ((long) 20) / (((long) FILTER_FAST_EMA) + ((long) 1));
+volatile int16_t pulseCount = 0;
+volatile unsigned long lastUpdateTime = 0;
+
 
 hw_timer_t * timer2 = NULL;
 hw_timer_t * timer1 = NULL;
@@ -110,6 +118,27 @@ void setup()
   wValue = 0L;
   wReportedValue = 0L;
 
+    // Configure PCNT for tachometer
+  pcnt_config_t pcnt_config = {
+      .pulse_gpio_num = TACH_PIN,
+      .ctrl_gpio_num = PCNT_PIN_NOT_USED,
+      .channel = PCNT_CHANNEL_0,
+      .unit = PCNT_UNIT,
+      .pos_mode = PCNT_COUNT_INC,  // Count on rising edges
+      .neg_mode = PCNT_COUNT_DIS,  // Do not count falling edges
+      .lctrl_mode = PCNT_MODE_KEEP,
+      .hctrl_mode = PCNT_MODE_KEEP,
+      .counter_h_lim = 10000,  // Large value to avoid overflow
+      .counter_l_lim = 0,
+  };
+
+  pcnt_unit_config(&pcnt_config);
+  pcnt_counter_pause(PCNT_UNIT);
+  pcnt_counter_clear(PCNT_UNIT);
+  pcnt_isr_register(pcnt_isr_handler, NULL, 0, NULL);
+  pcnt_intr_enable(PCNT_UNIT);
+  pcnt_counter_resume(PCNT_UNIT);
+
   //initialize timers
   setupClkTimer(); 
   sei();
@@ -137,15 +166,19 @@ void loop()
     SerialBT.print(F("Z"));
     SerialBT.print((long)zReportedValue);
     SerialBT.print(F(";"));
-  /*
-    SerialBT.print(F("W"));
-    SerialBT.print((long)wReportedValue);
-    SerialBT.print(F(";")); 
-    */
+
+    pcnt_get_counter_value(PCNT_UNIT, &count);
+    pcnt_counter_clear(PCNT_UNIT);
+    float rpm = (count * 60.0) / PULSES_PER_REV;  // Convert pulses to RPM
+    SerialBT.printf(F("RPM"): %.2f\n");
   }
 }
 
-
+// PCNT Interrupt Handler
+void IRAM_ATTR pcnt_isr_handler(void *arg) {
+  pcnt_get_counter_value(PCNT_UNIT, &pulseCount);
+  pcnt_counter_clear(PCNT_UNIT);
+}
 /* Interrupt Service Routines */
 
 // Timer 2 interrupt B ( Switches clock pin from low to high 21 times) at the end of clock counter limit
@@ -339,7 +372,7 @@ long MAX(long value1, long value2){
   } else {
     return value2;
   }
-}
+}A
 
 long ABS(long value){
   if(value < 0) {
