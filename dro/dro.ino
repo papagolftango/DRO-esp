@@ -6,11 +6,11 @@
 #include "BluetoothSerial.h"
 #include <driver/pcnt.h>
 
+
 // DRO config (if axis is not connected change in the corresponding constant value from "1" to "0")
 #define SCALE_X_ENABLED 1
 #define SCALE_Y_ENABLED 1
 #define SCALE_Z_ENABLED 1
-
 
 // I/O ports config (change pin numbers if DRO, Tach sensor or Tach LED feedback is connected to different ports)
 #define SCALE_CLK_PIN 2
@@ -19,11 +19,9 @@
 #define SCALE_Y_PIN 4
 #define SCALE_Z_PIN 5
 
-
 // General Settings
 #define UART_BAUD_RATE 9600       //  Set this so it matches the BT module's BAUD rate 
 #define UPDATE_FREQUENCY 24       //  Frequency in Hz (number of timer per second the scales are read and the data is sent to the application)
-
 
 // Tachometer settings
 #define TACH_PIN 14         // GPIO where tach sensor is connected
@@ -48,14 +46,17 @@
 #define FILTER_FAST_EMA 2           // Fast movement EMA
 
 BluetoothSerial SerialBT;   //pgt
+
+// Variables
+int16_t pulseCount = 0;
+volatile unsigned long lastUpdateTime = 0;
+
+
 // Some constants calculated here
 long const longMax = __LONG_MAX__;
 long const longMin = (- __LONG_MAX__ - (long) 1);
 long const slowSc = ((long) 2000) / (((long) FILTER_SLOW_EMA) + ((long) 1));
 long const fastSc = ((long) 20) / (((long) FILTER_FAST_EMA) + ((long) 1));
-volatile int16_t pulseCount = 0;
-volatile unsigned long lastUpdateTime = 0;
-
 
 hw_timer_t * timer2 = NULL;
 hw_timer_t * timer1 = NULL;
@@ -70,15 +71,12 @@ volatile boolean tickTimerFlag;
 volatile int updateFrequencyCounter;
 
 // Axis count
-
 volatile long xValue;
 volatile long xReportedValue;
 volatile long yValue;
 volatile long yReportedValue;
 volatile long zValue;
 volatile long zReportedValue;
-volatile long wValue;
-volatile long wReportedValue;
 
 volatile long axisLastReadX[AXIS_AVERAGE_COUNT];
 volatile int axisLastReadPositionX;
@@ -88,6 +86,9 @@ volatile long axisLastReadY[AXIS_AVERAGE_COUNT];
 volatile int axisLastReadPositionY;
 volatile long axisAMAValueY;
 
+volatile long axisLastReadZ[AXIS_AVERAGE_COUNT];
+volatile int axisLastReadPositionZ;
+volatile long axisAMAValueZ;
 
 //The setup function is called once at startup of the sketch
 void setup()
@@ -100,7 +101,8 @@ void setup()
   SerialBT.begin("ESP32test");
   // Initialize DRO values
   initializeAxisAverage(axisLastReadX, axisLastReadPositionX, axisAMAValueX);
-  initializeAxisAverage(axisLastReadY, axisLastReadPositionY, axisAMAValueY);
+  initializeAxisAverage(axisLastReadY, axisLastReadPositionY, axisAMAValueY);  
+  initializeAxisAverage(axisLastReadZ, axisLastReadPositionZ, axisAMAValueZ);
   
   // clock pin should be set as output
   pinMode(SCALE_CLK_PIN, OUTPUT);
@@ -138,15 +140,25 @@ void loop()
     SerialBT.print(F("Y"));
     SerialBT.print((long)yReportedValue);
     SerialBT.print(F(";"));
-    
+
+    scaleValueRounded(yReportedValue, axisLastReadZ, axisLastReadPositionZ, axisAMAValueZ); 
     SerialBT.print(F("Z"));
     SerialBT.print((long)zReportedValue);
     SerialBT.print(F(";"));
 
+		// print Tach rpm to serial port
+		Serial.print(F("T"));
+		Serial.print((unsigned long)tachReadoutRpm);
+		Serial.print(F(";"));
   }
 }
 
 /* Interrupt Service Routines */
+// PCNT Interrupt Handler
+void IRAM_ATTR pcnt_isr_handler(void *arg) {
+    pcnt_get_counter_value(PCNT_UNIT, &pulseCount);
+    pcnt_counter_clear(PCNT_UNIT);
+}
 
 // Timer 2 interrupt B ( Switches clock pin from low to high 21 times) at the end of clock counter limit
 void IRAM_ATTR onTimer2() {
@@ -203,12 +215,16 @@ void IRAM_ATTR onTimer1() {
       zValue = 0L;
       
       // Tell the main loop, that it's time to sent data
+      if (updateFrequencyCounter == 0) {
+	      tickTimerFlag = true;
+	    }                            //PGT remove line below  - looks like updating too often
       tickTimerFlag = true;
     } 
   }
 
   updateFrequencyCounter++;
   // Start of next cycle
+  // should use updateFrequencyCounterLimit and not 100 ?? 
   if ( updateFrequencyCounter >= 100) {
     updateFrequencyCounter = 0;
   }
