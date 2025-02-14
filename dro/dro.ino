@@ -14,6 +14,7 @@
 
 // I/O ports config (change pin numbers if DRO, Tach sensor or Tach LED feedback is connected to different ports)
 #define SCALE_CLK_PIN 2
+#define REPORT_PIN  26
 
 #define SCALE_X_PIN 21   // pin 3 was causing instability - some internal pull-up as this is a uart pin as well. Moveing it to pin 21 as its safe and next to pin 3
 #define SCALE_Y_PIN 4
@@ -21,7 +22,7 @@
 
 // General Settings
 #define UART_BAUD_RATE 9600       //  Set this so it matches the BT module's BAUD rate 
-#define UPDATE_FREQUENCY 24       //  Frequency in Hz (number of timer per second the scales are read and the data is sent to the application)
+#define UPDATE_FREQUENCY 25       //  Frequency in Hz (number of timer per second the scales are read and the data is sent to the application)
 
 // Tachometer settings
 #define TACH_PIN 14         // GPIO where tach sensor is connected
@@ -99,6 +100,7 @@ void setup()
 
  // SerialBT.begin(115200); //Bluetooth device name
   SerialBT.begin("ESP32test");
+
   // Initialize DRO values
   initializeAxisAverage(axisLastReadX, axisLastReadPositionX, axisAMAValueX);
   initializeAxisAverage(axisLastReadY, axisLastReadPositionY, axisAMAValueY);  
@@ -106,6 +108,7 @@ void setup()
   
   // clock pin should be set as output
   pinMode(SCALE_CLK_PIN, OUTPUT);
+  pinMode(REPORT_PIN, OUTPUT);
 
   //data pins should be set as inputs
   pinMode(SCALE_X_PIN, INPUT);
@@ -126,8 +129,9 @@ void setup()
 // The loop function is called in an endless loop
 void loop()
 {
-
   if (tickTimerFlag) {
+    digitalWrite(REPORT_PIN, 1); // pgt
+
     tickTimerFlag = false;
     
     scaleValueRounded(xReportedValue, axisLastReadX, axisLastReadPositionX, axisAMAValueX);
@@ -141,15 +145,17 @@ void loop()
     SerialBT.print((long)yReportedValue);
     SerialBT.print(F(";"));
 
-    scaleValueRounded(yReportedValue, axisLastReadZ, axisLastReadPositionZ, axisAMAValueZ); 
+    scaleValueRounded(zReportedValue, axisLastReadZ, axisLastReadPositionZ, axisAMAValueZ); 
     SerialBT.print(F("Z"));
     SerialBT.print((long)zReportedValue);
     SerialBT.print(F(";"));
 
 		// print Tach rpm to serial port
-		Serial.print(F("T"));
-		Serial.print((unsigned long)tachReadoutRpm);
-		Serial.print(F(";"));
+    SerialBT.print(F("T"));
+    SerialBT.print((long)(500+zReportedValue));
+    SerialBT.print(F(";"));
+
+    digitalWrite(REPORT_PIN, 0); // pgt
   }
 }
 
@@ -178,6 +184,8 @@ void IRAM_ATTR onTimer1() {
       digitalWrite(SCALE_CLK_PIN, 0);
       return;
     }
+   timerAlarmEnable(timer2);
+
     // read the pin state and shift it into the appropriate variables
     // Logic by Les Jones:
     //  If data pin is HIGH set bit 20th of the axis value to '1'.  Then shift axis value one bit to the right
@@ -225,10 +233,10 @@ void IRAM_ATTR onTimer1() {
   updateFrequencyCounter++;
   // Start of next cycle
   // should use updateFrequencyCounterLimit and not 100 ?? 
-  if ( updateFrequencyCounter >= 100) {
+  if ( updateFrequencyCounter >= 1600) {
     updateFrequencyCounter = 0;
   }
-  timerAlarmEnable(timer2);
+ // timerAlarmEnable(timer2);
 }
 
 //initializes clock timer
@@ -241,7 +249,7 @@ void setupClkTimer()
   timerAttachInterrupt(timer1, &onTimer1, true);
   timerAttachInterrupt(timer2, &onTimer2, true);
   timerAlarmWrite(timer2, 111, false);   // timer 2, alarm after 111 ticks, dont autoreload
-  timerAlarmWrite(timer1, 22, true);     // timer 1, 22 ticks and autoreload
+  timerAlarmWrite(timer1, 25, true);     // timer 1, 22 ticks and autoreload
   timerAlarmEnable(timer2);
   timerAlarmEnable(timer1);
 }
