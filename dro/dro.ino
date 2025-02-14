@@ -220,12 +220,12 @@ void setupClkTimer()
 {
   updateFrequencyCounter = 0;
 
-  timer1 = timerBegin(1, 80, true);   // 1us ticks
-  timer2 = timerBegin(2, 80, true);
+  timer1 = timerBegin(1, 80, true);   // 1us ticks count up
+  timer2 = timerBegin(2, 80, true);   // 1us ticks @80MHz count up
   timerAttachInterrupt(timer1, &onTimer1, true);
   timerAttachInterrupt(timer2, &onTimer2, true);
-  timerAlarmWrite(timer2, 111, false);
-  timerAlarmWrite(timer1, 22, true);
+  timerAlarmWrite(timer2, 111, false);   // timer 2, alarm after 111 ticks, dont autoreload
+  timerAlarmWrite(timer1, 22, true);     // timer 1, 22 ticks and autoreload
   timerAlarmEnable(timer2);
   timerAlarmEnable(timer1);
 }
