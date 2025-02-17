@@ -19,15 +19,20 @@
 #define SCALE_X_PIN 21   // pin 3 was causing instability - some internal pull-up as this is a uart pin as well. Moveing it to pin 21 as its safe and next to pin 3
 #define SCALE_Y_PIN 4
 #define SCALE_Z_PIN 5
+#define TACH_PIN 14  // GPIO where tach sensor is connected
 
 // General Settings
 #define UART_BAUD_RATE 9600       //  Set this so it matches the BT module's BAUD rate 
 #define UPDATE_FREQUENCY 25       //  Frequency in Hz (number of timer per second the scales are read and the data is sent to the application)
 
+#define MAX_UPDATE_FREQUENCY 21
+#define TIMER1_ALARM_TICKS 25
+#define TIMER2_ALARM_TICKS 111
+
 // Tachometer settings
 #define TACH_PIN 14         // GPIO where tach sensor is connected
 #define PCNT_UNIT PCNT_UNIT_0
-#define PULSES_PER_REV 1    // Adjust based on number of pulses per revolution
+#define PULSES_PER_REV 16    // Adjust based on number of pulses per revolution
 
 //---END OF CONFIGURATION PARAMETERS ---
 
@@ -52,7 +57,6 @@ BluetoothSerial SerialBT;   //pgt
 int16_t pulseCount = 0;
 volatile unsigned long lastUpdateTime = 0;
 
-
 // Some constants calculated here
 long const longMax = __LONG_MAX__;
 long const longMin = (- __LONG_MAX__ - (long) 1);
@@ -70,6 +74,7 @@ int const scaleClockDutyLimit = (int) (((unsigned long) (F_CPU / 800)) * ((unsig
 //variables that will store the DRO readout
 volatile boolean tickTimerFlag;
 volatile int updateFrequencyCounter;
+volatile int tachTickCounter;
 
 // Axis count
 volatile long xValue;
@@ -97,6 +102,7 @@ void setup()
  // cli();
   tickTimerFlag = false;
   updateFrequencyCounter = 0;
+  tachTickCounter = 0;
 
  // SerialBT.begin(115200); //Bluetooth device name
   SerialBT.begin("ESP32test");
@@ -120,6 +126,31 @@ void setup()
   pinMode(SCALE_Z_PIN, INPUT_PULLDOWN);
   zValue = 0L;
   zReportedValue = 0L;
+
+  // Initialize the pulse counter
+  pinMode(TACH_PIN, INPUT);
+  pcnt_config_t pcnt_config = {
+    .pulse_gpio_num = TACH_PIN,     // Set TACH_PIN as pulse input
+    .ctrl_gpio_num = PCNT_PIN_NOT_USED, // No control pin
+    .channel = PCNT_CHANNEL_0,
+    .unit = PCNT_UNIT,
+    .pos_mode = PCNT_COUNT_INC,     // Count on the positive edge
+    .neg_mode = PCNT_COUNT_DIS,     // Do not count on the negative edge
+    .lctrl_mode = PCNT_MODE_KEEP,   // Keep the primary counter mode if low
+    .hctrl_mode = PCNT_MODE_KEEP,   // Keep the primary counter mode if high
+    .counter_h_lim = 32767,
+    .counter_l_lim = -32768,
+  };
+
+  pcnt_unit_config(&pcnt_config);
+
+  // Initialize PCNT's counter
+  pcnt_counter_pause(PCNT_UNIT);
+  pcnt_counter_clear(PCNT_UNIT);
+
+  // Resume counting
+  pcnt_counter_resume(PCNT_UNIT);
+
 
   //initialize timers
   setupClkTimer(); 
@@ -152,19 +183,13 @@ void loop()
 
 		// print Tach rpm to serial port
     SerialBT.print(F("T"));
-    SerialBT.print((long)(500+zReportedValue));
+    SerialBT.print((long)(pulseCount * 600 / PULSES_PER_REV ));
     SerialBT.print(F(";"));
 
     digitalWrite(REPORT_PIN, 0); // pgt
   }
 }
 
-/* Interrupt Service Routines */
-// PCNT Interrupt Handler
-void IRAM_ATTR pcnt_isr_handler(void *arg) {
-    pcnt_get_counter_value(PCNT_UNIT, &pulseCount);
-    pcnt_counter_clear(PCNT_UNIT);
-}
 
 // Timer 2 interrupt B ( Switches clock pin from low to high 21 times) at the end of clock counter limit
 void IRAM_ATTR onTimer2() {
@@ -184,7 +209,7 @@ void IRAM_ATTR onTimer1() {
       digitalWrite(SCALE_CLK_PIN, 0);
       return;
     }
-   timerAlarmEnable(timer2);
+    timerAlarmEnable(timer2);
 
     // read the pin state and shift it into the appropriate variables
     // Logic by Les Jones:
@@ -230,12 +255,26 @@ void IRAM_ATTR onTimer1() {
     } 
   }
 
+  // Read and clear the pulse counter
+  pcnt_get_counter_value(PCNT_UNIT, &pulseCount);
+  pcnt_counter_clear(PCNT_UNIT);
+
   updateFrequencyCounter++;
+
   // Start of next cycle
-  // should use updateFrequencyCounterLimit and not 100 ?? 
+  // should use updateFrequencyCounterLimit    40mS
   if ( updateFrequencyCounter >= 1600) {
     updateFrequencyCounter = 0;
   }
+
+  tachTickCounter++;
+  if ( updateFrequencyCounter >= 4000) {     //  100mS
+    tachTickCounter = 0;
+  // Read and clear the pulse counter - pulses per 100ms
+  pcnt_get_counter_value(PCNT_UNIT, &pulseCount);
+  pcnt_counter_clear(PCNT_UNIT);
+  }
+
  // timerAlarmEnable(timer2);
 }
 
@@ -248,12 +287,11 @@ void setupClkTimer()
   timer2 = timerBegin(2, 80, true);   // 1us ticks @80MHz count up
   timerAttachInterrupt(timer1, &onTimer1, true);
   timerAttachInterrupt(timer2, &onTimer2, true);
-  timerAlarmWrite(timer2, 111, false);   // timer 2, alarm after 111 ticks, dont autoreload
-  timerAlarmWrite(timer1, 25, true);     // timer 1, 22 ticks and autoreload
+  timerAlarmWrite(timer2, TIMER2_ALARM_TICKS, false);   // timer 2, alarm after TIMER2_ALARM_TICKS ticks, dont autoreload
+  timerAlarmWrite(timer1, TIMER1_ALARM_TICKS, true);     // timer 1, TIMER1_ALARM_TICKS ticks and autoreload
   timerAlarmEnable(timer2);
   timerAlarmEnable(timer1);
 }
-
 
 
 void initializeAxisAverage(volatile long axisLastRead[], volatile int &axisLastReadPosition, volatile long &axisAMAValue) {
