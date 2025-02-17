@@ -130,17 +130,19 @@ void setup()
   // Initialize the pulse counter
   pinMode(TACH_PIN, INPUT);
   pcnt_config_t pcnt_config = {
-    .pulse_gpio_num = TACH_PIN,     // Set TACH_PIN as pulse input
+    .pulse_gpio_num = TACH_PIN,     // GPIO for pulse input
     .ctrl_gpio_num = PCNT_PIN_NOT_USED, // No control pin
-    .channel = PCNT_CHANNEL_0,
-    .unit = PCNT_UNIT,
-    .pos_mode = PCNT_COUNT_INC,     // Count on the positive edge
-    .neg_mode = PCNT_COUNT_DIS,     // Do not count on the negative edge
-    .lctrl_mode = PCNT_MODE_KEEP,   // Keep the primary counter mode if low
-    .hctrl_mode = PCNT_MODE_KEEP,   // Keep the primary counter mode if high
-    .counter_h_lim = 32767,
-    .counter_l_lim = -32768,
-  };
+    .lctrl_mode = PCNT_MODE_KEEP,   // Control signal low - Keep mode
+    .hctrl_mode = PCNT_MODE_KEEP,   // Control signal high - Keep mode
+    .pos_mode = PCNT_COUNT_INC,     // Count on positive edge
+    .neg_mode = PCNT_COUNT_DIS,     // Do not count on negative edge
+    .counter_h_lim = 32767,         // Upper limit
+    .counter_l_lim = -32768,        // Lower limit
+    .unit = PCNT_UNIT,              // PCNT Unit
+    .channel = PCNT_CHANNEL_0       // PCNT Channel
+};
+
+
 
   pcnt_unit_config(&pcnt_config);
 
