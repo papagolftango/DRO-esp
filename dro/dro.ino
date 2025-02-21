@@ -7,11 +7,6 @@
 #include <driver/pcnt.h>
 
 
-// DRO config (if axis is not connected change in the corresponding constant value from "1" to "0")
-#define SCALE_X_ENABLED 1
-#define SCALE_Y_ENABLED 1
-#define SCALE_Z_ENABLED 1
-
 // I/O ports config (change pin numbers if DRO, Tach sensor or Tach LED feedback is connected to different ports)
 #define SCALE_CLK_PIN 2
 #define REPORT_PIN  26
@@ -143,16 +138,12 @@ void setup()
 };
 
 
-
   pcnt_unit_config(&pcnt_config);
-
   // Initialize PCNT's counter
   pcnt_counter_pause(PCNT_UNIT);
   pcnt_counter_clear(PCNT_UNIT);
-
   // Resume counting
   pcnt_counter_resume(PCNT_UNIT);
-
 
   //initialize timers
   setupClkTimer(); 
@@ -250,16 +241,9 @@ void IRAM_ATTR onTimer1() {
       zValue = 0L;
       
       // Tell the main loop, that it's time to sent data
-      if (updateFrequencyCounter == 0) {
-	      tickTimerFlag = true;
-	    }                            //PGT remove line below  - looks like updating too often
       tickTimerFlag = true;
     } 
   }
-
-  // Read and clear the pulse counter
-  pcnt_get_counter_value(PCNT_UNIT, &pulseCount);
-  pcnt_counter_clear(PCNT_UNIT);
 
   updateFrequencyCounter++;
 
@@ -270,11 +254,11 @@ void IRAM_ATTR onTimer1() {
   }
 
   tachTickCounter++;
-  if ( updateFrequencyCounter >= 4000) {     //  100mS
+  if ( tachTickCounter >= 4000) {     //  100mS
     tachTickCounter = 0;
   // Read and clear the pulse counter - pulses per 100ms
-  pcnt_get_counter_value(PCNT_UNIT, &pulseCount);
-  pcnt_counter_clear(PCNT_UNIT);
+    pcnt_get_counter_value(PCNT_UNIT, &pulseCount);
+    pcnt_counter_clear(PCNT_UNIT);
   }
 
  // timerAlarmEnable(timer2);
