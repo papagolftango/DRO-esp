@@ -11,10 +11,10 @@
 #define SCALE_CLK_PIN 2
 #define REPORT_PIN  26
 
-#define SCALE_X_PIN 21   // pin 3 was causing instability - some internal pull-up as this is a uart pin as well. Moveing it to pin 21 as its safe and next to pin 3
+#define SCALE_X_PIN 21   // pin 3 was causing instability - some internal pull-up as this is a uart pin as well. Moving it to pin 21 as its safe and next to pin 3
 #define SCALE_Y_PIN 4
 #define SCALE_Z_PIN 5
-#define TACH_PIN 14  // GPIO where tach sensor is connected
+#define TACH_PIN    14  // GPIO where tach sensor is connected
 
 // General Settings
 #define UART_BAUD_RATE 9600       //  Set this so it matches the BT module's BAUD rate 
@@ -175,9 +175,10 @@ void loop()
     SerialBT.print(F(";"));
 
 		// print Tach rpm to serial port
-    SerialBT.print(F("T"));
-    SerialBT.print((long)(pulseCount * 600 / PULSES_PER_REV ));
+    // ie *60 for RPM. *4 as count is over 250mS. Trigger wheel increases ticks per rev
     SerialBT.print(F(";"));
+    SerialBT.print(F("T"));
+    SerialBT.print((long)(pulseCount * 60 * 4  / PULSES_PER_REV )); 
 
     digitalWrite(REPORT_PIN, 0); // pgt
   }
@@ -248,15 +249,15 @@ void IRAM_ATTR onTimer1() {
   updateFrequencyCounter++;
 
   // Start of next cycle
-  // should use updateFrequencyCounterLimit    40mS
-  if ( updateFrequencyCounter >= 1600) {
+  // should use updateFrequencyCounterLimit    25mS
+  if ( updateFrequencyCounter >= 1000) {
     updateFrequencyCounter = 0;
   }
 
   tachTickCounter++;
-  if ( tachTickCounter >= 4000) {     //  100mS
+  if ( tachTickCounter >= 10000) {     //  250mS
     tachTickCounter = 0;
-  // Read and clear the pulse counter - pulses per 100ms
+  // Read and clear the pulse counter - pulses per 250ms
     pcnt_get_counter_value(PCNT_UNIT, &pulseCount);
     pcnt_counter_clear(PCNT_UNIT);
   }
